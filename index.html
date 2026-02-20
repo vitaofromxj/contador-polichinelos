@@ -1,72 +1,88 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Contador de Polichinelos AI</title>
+    <title>Contador Pro AI</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
     <style>
-        body { margin: 0; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; font-family: sans-serif; }
-        canvas { position: absolute; top: 0; left: 0; }
-        #counter-container { z-index: 10; margin-top: 20px; font-size: 3rem; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 15px; border: 2px solid #00ff88; }
-        video { width: 100vw; height: auto; transform: scaleX(-1); }
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
+        #ui { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 10; }
+        .stat { background: rgba(0,255,136,0.2); color: #00ff88; padding: 10px 20px; border-radius: 10px; font-size: 24px; border: 1px solid #00ff88; }
+        video { position: fixed; right: 0; bottom: 0; min-width: 100%; min-height: 100%; transform: scaleX(-1); opacity: 0.7; }
+        canvas { position: fixed; right: 0; bottom: 0; min-width: 100%; min-height: 100%; transform: scaleX(-1); }
     </style>
 </head>
 <body>
-
-    <div id="counter-container">Polichinelos: <span id="count">0</span></div>
+    <div id="ui">
+        <span class="stat">Pulos: <b id="count">0</b></span>
+        <span id="status" style="margin-left:10px; color:white; font-size:12px;">Aguardando...</span>
+    </div>
     <video id="video" playsinline></video>
-    <canvas id="output"></canvas>
+    <canvas id="canvas"></canvas>
 
 <script>
 let count = 0;
-let stage = 'down'; // 'up' ou 'down'
-
-async function setupCamera() {
-    const video = document.getElementById('video');
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
-    video.srcObject = stream;
-    return new Promise((resolve) => { video.onloadedmetadata = () => resolve(video); });
-}
+let stage = 'down';
 
 async function main() {
-    const video = await setupCamera();
-    video.play();
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const status = document.getElementById('status');
+
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+    video.srcObject = stream;
+    await video.play();
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
     const detector = await poseDetection.createDetector(
         poseDetection.SupportedModels.MoveNet,
         { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
     );
 
-    const canvas = document.getElementById('output');
-    const ctx = canvas.getContext('2d');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
     async function detect() {
         const poses = await detector.estimatePoses(video);
-        
-        if (poses.length > 0) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (poses[0]) {
             const keypoints = poses[0].keypoints;
             
-            // Mapeamento de pontos chave
-            const leftWrist = keypoints.find(k => k.name === 'left_wrist');
-            const rightWrist = keypoints.find(k => k.name === 'right_wrist');
-            const leftShoulder = keypoints.find(k => k.name === 'left_shoulder');
-            const rightShoulder = keypoints.find(k => k.name === 'right_shoulder');
+            // Desenhar pontos para debug
+            keypoints.forEach(kp => {
+                if(kp.score > 0.3) {
+                    ctx.fillStyle = "#00ff88";
+                    ctx.beginPath();
+                    ctx.arc(kp.x, kp.y, 5, 0, 2*Math.PI);
+                    ctx.fill();
+                }
+            });
 
-            // Lógica do Polichinelo
-            if (leftWrist.score > 0.5 && rightWrist.score > 0.5) {
-                const armsUp = leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y;
+            const rWrist = keypoints[10];
+            const lWrist = keypoints[9];
+            const rShoulder = keypoints[6];
+            const lShoulder = keypoints[5];
+            const rAnkle = keypoints[16];
+            const lAnkle = keypoints[15];
+
+            // LÓGICA REVISADA: Braços acima da cabeça E pés afastados
+            if (rWrist.score > 0.3 && lWrist.score > 0.3) {
                 
+                const armsUp = rWrist.y < rShoulder.y && lWrist.y < lShoulder.y;
+                const feetApart = Math.abs(rAnkle.x - lAnkle.x) > 100; // Ajuste este valor se necessário
+
                 if (armsUp && stage === 'down') {
                     stage = 'up';
+                    status.innerText = "NO AR!";
                 } 
                 if (!armsUp && stage === 'up') {
                     stage = 'down';
                     count++;
                     document.getElementById('count').innerText = count;
+                    status.innerText = "CHÃO!";
                 }
             }
         }
@@ -74,7 +90,6 @@ async function main() {
     }
     detect();
 }
-
 main();
 </script>
 </body>
