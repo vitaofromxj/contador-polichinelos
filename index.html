@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Contador de Polichinelos AI</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+    <style>
+        body { margin: 0; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; font-family: sans-serif; }
+        canvas { position: absolute; top: 0; left: 0; }
+        #counter-container { z-index: 10; margin-top: 20px; font-size: 3rem; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 15px; border: 2px solid #00ff88; }
+        video { width: 100vw; height: auto; transform: scaleX(-1); }
+    </style>
+</head>
+<body>
+
+    <div id="counter-container">Polichinelos: <span id="count">0</span></div>
+    <video id="video" playsinline></video>
+    <canvas id="output"></canvas>
+
+<script>
+let count = 0;
+let stage = 'down'; // 'up' ou 'down'
+
+async function setupCamera() {
+    const video = document.getElementById('video');
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+    video.srcObject = stream;
+    return new Promise((resolve) => { video.onloadedmetadata = () => resolve(video); });
+}
+
+async function main() {
+    const video = await setupCamera();
+    video.play();
+
+    const detector = await poseDetection.createDetector(
+        poseDetection.SupportedModels.MoveNet,
+        { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+    );
+
+    const canvas = document.getElementById('output');
+    const ctx = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    async function detect() {
+        const poses = await detector.estimatePoses(video);
+        
+        if (poses.length > 0) {
+            const keypoints = poses[0].keypoints;
+            
+            // Mapeamento de pontos chave
+            const leftWrist = keypoints.find(k => k.name === 'left_wrist');
+            const rightWrist = keypoints.find(k => k.name === 'right_wrist');
+            const leftShoulder = keypoints.find(k => k.name === 'left_shoulder');
+            const rightShoulder = keypoints.find(k => k.name === 'right_shoulder');
+
+            // Lógica do Polichinelo
+            if (leftWrist.score > 0.5 && rightWrist.score > 0.5) {
+                const armsUp = leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y;
+                
+                if (armsUp && stage === 'down') {
+                    stage = 'up';
+                } 
+                if (!armsUp && stage === 'up') {
+                    stage = 'down';
+                    count++;
+                    document.getElementById('count').innerText = count;
+                }
+            }
+        }
+        requestAnimationFrame(detect);
+    }
+    detect();
+}
+
+main();
+</script>
+</body>
+</html>
